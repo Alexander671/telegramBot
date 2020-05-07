@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 21bad94ae41f4605f828ccc356249afffcae3f3bea9ee83b094698f05833d80f
+-- hash: f3f76536b89476c84bf33f01cb324875b4da1a4ddd55bbfa6c946a95eab9701f
 
 name:           telegramBot
 version:        0.1.0.0
@@ -34,6 +34,11 @@ library
       src
   build-depends:
       base >=4.7 && <5
+    , bytestring
+    , http-conduit
+    , lens
+    , lens-aeson
+    , text
   default-language: Haskell2010
 
 executable telegramBot-exe
@@ -45,7 +50,12 @@ executable telegramBot-exe
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , bytestring
+    , http-conduit
+    , lens
+    , lens-aeson
     , telegramBot
+    , text
   default-language: Haskell2010
 
 test-suite telegramBot-test
@@ -58,5 +68,10 @@ test-suite telegramBot-test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , bytestring
+    , http-conduit
+    , lens
+    , lens-aeson
     , telegramBot
+    , text
   default-language: Haskell2010
