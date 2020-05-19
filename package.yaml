@@ -26,7 +26,8 @@ dependencies:
 - lens-aeson
 - bytestring
 - text 
-
+- httpd-shed
+- aeson
 library:
   source-dirs: src
 
