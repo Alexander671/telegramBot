@@ -1,58 +1,39 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, DeriveGeneric #-}
+
 module Main where
 
-
 import           Network.HTTP.Simple            ( httpBS, getResponseBody,parseRequestThrow_ )
-import           Control.Lens                   ( preview )
-import           Data.Aeson.Lens   
-import           Data.Aeson   
+import           Data.Aeson  
+import           Data.Text 
 import           Data.Aeson.Types          
 import           Control.Monad
+import           GHC.Generics
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Char8         as BS
 import Lib
 
-
-
---------------------------------------------------
--- Первый уровень JSON                          --
---------------------------------------------------
-data TelegramUpdate a = TelegramUpdate
-  {   telegramUpdateOK :: Bool
-    , telegramUpdateResult :: Maybe a
-  } deriving Show
-
---------------------------------------------------
--- Представитель класса FromJSON                --
--- для использования функции decode             --
---------------------------------------------------
-instance FromJSON (TelegramUpdate a)  where
-        parseJSON (Object v) = TelegramUpdate <$>
-                            v .: "ok" <*>
-                            v .: "result"
-        parseJSON  _         = fail "parseJSON error not objectType"
-
-
-{--------------------------------------------------
--- Второй уровень JSON (result)                 --
---------------------------------------------------
-data TelegramUpdateResult a = TelegramUpdateResult
-  {   telegramUpdateOK :: Bool
-    , telegramUpdateResult :: Maybe a
-  } deriving Show
-
-
---                //--//--//                    --
-instance FromJSON (TelegramUpdate a)  where
-        parseJSON (Object v) = TelegramUpdate <$>
-                            v .: "ok" <*>
-                            v .: "result"
-        parseJSON  _         = fail "parseJSON error not objectType"
--}
-
-
 token :: String
 token = "1283054130:AAFMfS1-WADlOtvj77jOm9COzDc8D-JLJIE"
+ 
+
+data TelegramResult = TelegramResult
+  { id :: Int
+  } deriving (Show,Generic)
+
+instance FromJSON TelegramResult where
+instance ToJSON TelegramResult where
+
+data TelegramUpdate = TelegramUpdate
+  { ok :: Bool
+  , result :: Maybe [TelegramResult]
+  , description :: Maybe String
+  } deriving (Show,Generic)
+
+
+instance FromJSON (TelegramUpdate) where
+instance ToJSON (TelegramUpdate) where
+
+
 
 main :: IO ()
 main = do
@@ -72,11 +53,7 @@ getUpdates = do
             return (getResponseBody res)
         where url =parseRequestThrow_ ("https://api.telegram.org/bot" ++ token ++ "/getUpdates")
 
-
-
-getId id1 = do  
-               result <- decode id1 :: Maybe (Object)
-               flip parseMaybe result $ \obj -> do
-                   res <- obj .: "result"         
-                   return (res)
---995320169
+getId :: B.ByteString -> Maybe Bool
+getId id1 = do
+            res  <- decode id1 :: Maybe TelegramUpdate
+            return (ok res)
