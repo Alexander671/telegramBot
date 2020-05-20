@@ -17,7 +17,7 @@ token = "1283054130:AAFMfS1-WADlOtvj77jOm9COzDc8D-JLJIE"
  
 
 data TelegramResult = TelegramResult
-  { id :: Int
+  { update_id :: Int
   } deriving (Show,Generic)
 
 instance FromJSON TelegramResult where
@@ -53,7 +53,8 @@ getUpdates = do
             return (getResponseBody res)
         where url =parseRequestThrow_ ("https://api.telegram.org/bot" ++ token ++ "/getUpdates")
 
-getId :: B.ByteString -> Maybe Bool
+getId :: B.ByteString -> Maybe [Int]
 getId id1 = do
             res  <- decode id1 :: Maybe TelegramUpdate
-            return (ok res)
+            res2 <- (result res)
+            return (fmap update_id res2)
