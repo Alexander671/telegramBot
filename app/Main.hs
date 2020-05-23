@@ -13,7 +13,7 @@ import qualified Data.ByteString.Char8         as BS
 import Lib
 
 token :: String
-token = "1283054130:AAFMfS1-WADlOtvj77jOm9COzDc8D-JLJIE"
+token = undefined
 
 fstTuple  (a,_,_) = a
 sndTuple  (_,a,_) = a
