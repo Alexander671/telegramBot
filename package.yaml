@@ -28,6 +28,7 @@ dependencies:
 - text 
 - httpd-shed
 - aeson
+- http-client
 library:
   source-dirs: src
 

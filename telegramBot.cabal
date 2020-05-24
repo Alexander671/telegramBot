@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8f108d9607d1d3d0c12520cba7ee00955850b2b7faf489627052c7a3a972a320
+-- hash: 3cb77d8a734d25acee41c3d44a0c0ef2f93d5205bc39db308c37c2226d17a5f1
 
 name:           telegramBot
 version:        0.1.0.0
@@ -36,6 +36,7 @@ library
       aeson
     , base >=4.7 && <5
     , bytestring
+    , http-client
     , http-conduit
     , httpd-shed
     , lens
@@ -54,6 +55,7 @@ executable telegramBot-exe
       aeson
     , base >=4.7 && <5
     , bytestring
+    , http-client
     , http-conduit
     , httpd-shed
     , lens
@@ -74,6 +76,7 @@ test-suite telegramBot-test
       aeson
     , base >=4.7 && <5
     , bytestring
+    , http-client
     , http-conduit
     , httpd-shed
     , lens
