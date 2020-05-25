@@ -29,6 +29,7 @@ dependencies:
 - httpd-shed
 - aeson
 - http-client
+- http-client-tls
 library:
   source-dirs: src
 
