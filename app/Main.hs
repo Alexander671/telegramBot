@@ -18,13 +18,18 @@ import Lib
 token :: String
 token = "https://api.telegram.org/bot"
 
+textRepeat :: Int -> String
+textRepeat cht = "Your amount of repeats is " ++ show cht ++ ". Choose amount of repeats"
+
+textHelp :: String
+textHelp = "Hello, it's echo telegram bot."
+
+amountOfStartRepeat = 1
 
 fstTuple  (a,_,_) = a
 sndTuple  (_,a,_) = a
 thirdTuple  (_,_,a) = a
 
-textRepeat :: String
-textRepeat = "Chhose amount of repeats"
 
 data TelegramKeyBoard = TelegramKeyBoard
      { inline_keyboard :: [[String]]
@@ -126,14 +131,11 @@ main = do
     print res
     main
 
-
 getUpdates :: IO BS.ByteString
 getUpdates  = do
-            res1 <- url
+            res1 <- parseRequest (token ++ "getUpdates?timeout=15")
             res  <- httpBS res1
             return $ getResponseBody res
-        where url =parseRequest (token ++ "getUpdates?timeout=10")
-
 
 
 getCallBackOrMessage str = case (check str) of
@@ -149,8 +151,9 @@ getCallBackOrMessage str = case (check str) of
 delCallBack :: B.ByteString ->  TelegramCallBackQuery -> IO (BS.ByteString)
 delCallBack str x = do
                 musor <- changeConfig $ getCallBack x $ id1 str
+                updates <- getUpdates
                 req <- httpBS (parseRequest_ $ deleteUpdate $ fstTuple $ getCallBack x $ id1 str)
-                return $ getResponseBody req
+                return updates
               where id1 str =  do
                         res <- decode str
                         (r:resResult) <- result res
@@ -168,7 +171,18 @@ changeConfig cnfg = do
                 seq (length contents) (return ())
                 writeFile "configRepeat.txt" $ show $ cnfg : (read contents :: [(Int,Int,Int)])
                 hClose handle
-                 
+
+
+takeConfig :: Int -> IO Int
+takeConfig iD = do
+                handle <- openFile "configRepeat.txt" ReadWriteMode
+                contents <- hGetContents handle 
+                seq (length contents) (return ())
+                hClose handle
+                return $ head1 $ filter (\(x,y,z) -> z==iD) (read contents :: [(Int,Int,Int)])
+                               --filter (\(x,y,z) -> z==iD)
+head1 [] = amountOfStartRepeat
+head1 ((x,y,z):xs) = y 
 
 getMessage :: B.ByteString -> Maybe [(Int, Maybe (Maybe Int),Maybe (Maybe String))]
 getMessage id1 = do
@@ -176,11 +190,9 @@ getMessage id1 = do
             resResult   <- result res
             return $ zip3 (fmap update_id resResult) 
                           (chatid resResult)
-                          $ fmap (text <$>) $ mess resResult
-            
+                          $ fmap (text <$>) $ mess resResult           
             where mess resResult = message <$> resResult
                   chatid resResult = ((chat_message_id <$>) <$>) <$> (chat <$>) <$> mess resResult
- 
 
 
 putMessage :: Maybe [(Int, Maybe (Maybe Int),Maybe (Maybe String))] -> [IO BS.ByteString]
@@ -198,27 +210,34 @@ url _ _ Nothing = []
 url _ Nothing _ = []
 url Nothing _ _ = []    
 url (Just (x:xs)) (Just ((Just (Just m)):mc)) (Just ((Just (Just c)):chat)) 
-                     | m == "/help"   = responseMessage x (parseRequest_ (token ++ "sendMessage?chat_id=" ++ (show c) ++ "&text=Маленький помощник")) : url (Just xs) (Just mc) (Just chat) 
-                     | m == "/repeat" = repeatMessage x : url (Just xs) (Just mc) (Just chat)
-                     | otherwise      = responseMessage x (parseRequest_ (token ++ "sendMessage?chat_id=" ++ (show c) ++ "&text="++ m )) : url (Just xs) (Just mc) (Just chat)
+                     | m == "/help"   = responseMessage (-5) x (parseRequest_ (token ++ "sendMessage?chat_id=" ++ (show c) ++ "&text=" ++ textHelp)) : url (Just xs) (Just mc) (Just chat) 
+                     | m == "/repeat" = repeatMessage c x : url (Just xs) (Just mc) (Just chat)
+                     | otherwise      = responseMessage c x (parseRequest_ (token ++ "sendMessage?chat_id=" ++ (show c) ++ "&text="++ m )) : url (Just xs) (Just mc) (Just chat)
 
 
 deleteUpdate :: Int -> String
 deleteUpdate x = token ++ "getUpdates?offset=" ++ show (x+1) 
 
-responseMessage :: Int ->  Request -> IO BS.ByteString
-responseMessage iD  req = do
-            res1  <- httpBS req
-            res2  <- httpBS del
+responseMessage :: Int -> Int ->  Request -> IO BS.ByteString
+responseMessage cht iD req = do
+            res2 <- httpBS del 
+            res1 <- responseMessage2 (takeConfig cht) req 
             return (getResponseBody res1)
-            where del = parseRequest_ $ deleteUpdate iD
-         
-repeatMessage ::Int -> IO BS.ByteString
-repeatMessage iD = do
+            where del = parseRequest_ $ deleteUpdate iD 
+          
+responseMessage2 :: IO (Int) -> Request -> IO (Response BS.ByteString)
+responseMessage2 rpts rqst = do
+           res  <- rpts
+           res2 <- httpBS rqst
+           if (res <= 1) then return res2 else responseMessage2 (return (res-1)) rqst
+
+repeatMessage :: Int -> Int -> IO BS.ByteString
+repeatMessage cht iD = do
                 request' <- parseRequest $ token
+                rpts <- takeConfig cht
                 let request = request'
                         { method         = "POST"
-                        , requestBody    = RequestBodyBS $ BS.pack ("{\"method\":\"sendMessage\", \"chat_id\" : " ++ (show 419088070) ++ ",\"text\" : \"" ++ textRepeat ++ "\", \"reply_markup\" : {\"inline_keyboard\" : [[{\"text\":\"1\", \"callback_data\":\"1\"},{\"text\":\"2\", \"callback_data\":\"2\"},{\"text\":\"3\", \"callback_data\":\"3\"},{\"text\":\"4\", \"callback_data\":\"4\"}]]}")  
+                        , requestBody    = RequestBodyBS $ BS.pack ("{\"method\":\"sendMessage\", \"chat_id\" : " ++ (show cht) ++ ",\"text\" : \"" ++ textRepeat rpts ++ "\", \"reply_markup\" : {\"inline_keyboard\" : [[{\"text\":\"1\", \"callback_data\":\"1\"},{\"text\":\"2\", \"callback_data\":\"2\"},{\"text\":\"3\", \"callback_data\":\"3\"},{\"text\":\"4\", \"callback_data\":\"4\"},{\"text\":\"5\", \"callback_data\":\"5\"}]]}")  
                         , requestHeaders = [ ("Content-Type", "application/json; charset=utf-8")]
                         }   
                 response <- httpBS request
