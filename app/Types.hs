@@ -4,7 +4,7 @@ module Types where
 import Data.Aeson
 import GHC.Generics
 
-data TelegramKeyBoard = TelegramKeyBoard
+newtype TelegramKeyBoard = TelegramKeyBoard
      { inline_keyboard :: [[String]]
      
      } deriving (Show,Generic)
@@ -16,16 +16,16 @@ instance FromJSON TelegramKeyBoard where
 instance ToJSON TelegramKeyBoard where
 
 
-data TelegramChat = TelegramChat
+newtype TelegramChat = TelegramChat
     { chat_message_id :: Int
     
     } deriving (Show,Generic)
 
-instance FromJSON (TelegramChat) where
+instance FromJSON TelegramChat where
         parseJSON (Object v) = TelegramChat <$>
                                  v .: "id" 
         parseJSON _          = fail "not TelegramFrom"
-instance ToJSON (TelegramChat) where
+instance ToJSON TelegramChat where
 
 
 data TelegramMessage= TelegramMessage
@@ -36,17 +36,7 @@ data TelegramMessage= TelegramMessage
     , video :: Maybe TelegramVideo
     } deriving (Show,Generic)
 
-data TelegramVideo = TelegramVideo
-   { file_id :: String
-   } deriving (Show,Generic)
-
-instance FromJSON (TelegramVideo) where
-        parseJSON (Object v) = TelegramVideo <$>
-                                 v .: "file_id"
-        parseJSON _          = fail "not TelegramVideo"
-instance ToJSON (TelegramVideo) where 
-
-instance FromJSON (TelegramMessage) where
+instance FromJSON TelegramMessage where
         parseJSON (Object v) = TelegramMessage <$>
                                  v .: "message_id" <*>
                                  v .:? "chat" <*>
@@ -54,9 +44,20 @@ instance FromJSON (TelegramMessage) where
                                  v .:? "reply_markup" <*>
                                  v .:? "video"
         parseJSON _          = fail "not TelegramMessage"
-instance ToJSON (TelegramMessage) where 
+instance ToJSON TelegramMessage where 
 
-data TelegramUser = TelegramUser
+newtype TelegramVideo = TelegramVideo
+   { file_id :: String
+   } deriving (Show,Generic)
+
+instance FromJSON TelegramVideo where
+        parseJSON (Object v) = TelegramVideo <$>
+                                 v .: "file_id"
+        parseJSON _          = fail "not TelegramVideo"
+instance ToJSON TelegramVideo where 
+
+
+newtype TelegramUser = TelegramUser
   { from_id :: Int
   } deriving (Show,Generic)
 
@@ -100,10 +101,10 @@ data TelegramUpdate = TelegramUpdate
   } deriving (Show,Generic)
 
 
-instance FromJSON (TelegramUpdate) where
+instance FromJSON TelegramUpdate where
         parseJSON (Object v) = TelegramUpdate <$>
                                  v .: "ok" <*>
                                  v .:? "result" <*>
                                  v .:? "decription" 
         parseJSON _          = fail "not TelegramUp"
-instance ToJSON (TelegramUpdate) where
+instance ToJSON TelegramUpdate where

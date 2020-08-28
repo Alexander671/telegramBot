@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
@@ -6,18 +6,20 @@ import Types
 import           Network.HTTP.Simple
 import           System.IO
 import           Network.HTTP.Client
-import           Network.HTTP.Client.TLS
 import           Data.Aeson  
-import           Data.Text                hiding (zip,map,filter,head,length)
-import           Data.Aeson.Types          
 import           Control.Monad
 import           GHC.Generics             hiding (from )
 import qualified Data.ByteString.Lazy     as B
 import qualified Data.ByteString.Char8    as BS
-import Control.Applicative 
 
-token :: String
-token = "https://api.telegram.org/bot1283054130:AAFMfS1-WADlOtvj77jOm9COzDc8D-JLJIE/"
+
+timeoutGetUpdates :: Integer
+timeoutGetUpdates = 15
+
+token = "1283054130:AAGAxsDcZAGYom8UEnqGqCFqmZ4_FuJG3mU"
+
+prefix :: String
+prefix = "https://api.telegram.org/bot" ++ token ++ "/"
 
 textNotFound :: String
 textNotFound = "This type of call is not supported"
@@ -31,26 +33,19 @@ textHelp = "Hello, it's echo telegram bot."
 amountOfStartRepeat :: Int
 amountOfStartRepeat = 1
 
-fstTuple  (a,_,_) = a
-sndTuple  (_,a,_) = a
-thirdTuple  (_,_,a) = a
-
-
-
-
 main :: IO ()
 main = do
-    print ("Take Updates from telegram:")
+    print "Take Updates from telegram:"
     updates <- getUpdates
     print updates
     response <- getCallBackOrMessage $ B.fromStrict updates 
-    print ("Response:")
+    print "Response:"
     print response
     main
 
 getUpdates :: IO BS.ByteString
 getUpdates  = do
-            res1 <- parseRequest (token ++ "getUpdates?timeout=15")
+            res1 <- parseRequest (prefix ++ "getUpdates?timeout="++show timeoutGetUpdates)
             res  <- httpBS res1
             return $ getResponseBody res
 
@@ -68,8 +63,7 @@ getCallBackOrMessage str = case check str of
                               check str = do 
                                         res       <- decode str  
                                         (r:resResult) <- result res
-                                        cb <- callback_query r
-                                        return cb
+                                        callback_query r
                               getIdToDel :: B.ByteString -> Maybe (Int, Int)
                               getIdToDel str = do
                                         res           <- decode str  
@@ -79,7 +73,7 @@ getCallBackOrMessage str = case check str of
                                         return  (chat_message_id chat, update_id r)
                
 
-delCallBack :: B.ByteString ->  TelegramCallBackQuery -> IO (BS.ByteString)
+delCallBack :: B.ByteString ->  TelegramCallBackQuery -> IO BS.ByteString
 delCallBack str x = do
                 musor <- changeConfig $ getCallBack x $ id1 str
                 updates <- getUpdates
@@ -89,6 +83,7 @@ delCallBack str x = do
                         res <- decode str
                         (r:resResult) <- result res
                         return $ update_id r
+                    fstTuple  (a,_,_) = a
 
 getCallBack :: TelegramCallBackQuery -> Maybe Int -> (Int,Int,Int)
 getCallBack str (Just x) = createField str
@@ -97,7 +92,7 @@ getCallBack str (Just x) = createField str
 -- (ID обновления, выбранное кол-во повторов, ID пользователя)
 changeConfig :: (Int,Int,Int) -> IO ()
 changeConfig cnfg = do
-                handle <- openFile "configRepeat.txt" ReadWriteMode
+                handle <- openFile "configRepeat.log" ReadWriteMode
                 contents <- hGetContents handle 
                 seq (length contents) (return ())
                 writeFile "configRepeat.txt" $ show $ cnfg : (read contents :: [(Int,Int,Int)])
@@ -106,12 +101,13 @@ changeConfig cnfg = do
 
 takeConfig :: Int -> IO Int
 takeConfig iD = do
-                handle <- openFile "configRepeat.txt" ReadWriteMode
-                contents <- hGetContents handle 
+                handle1 <- openFile "configRepeat.log" ReadWriteMode
+                contents <- hGetContents handle1
                 seq (length contents) (return ())
-                hClose handle
+                hClose handle1
                 return $ head1 $ filter (\(x,y,z) -> z==iD) (read contents :: [(Int,Int,Int)])
 
+head1 :: [(a, Int, c)] -> Int
 head1 [] = amountOfStartRepeat
 head1 ((x,y,z):xs) = y 
 
@@ -122,7 +118,7 @@ getMessage id1 = do
             return $ (,,) (update_id r) 
                           (join $ chatid r)
                           (fmap join (text <$>) $ message r)           
-            where chatid resResult = ((chat_message_id <$>) <$>) . (fmap chat) $ message resResult
+            where chatid resResult = ((chat_message_id <$>) <$>) . fmap chat $ message resResult
 
 getVideo :: B.ByteString -> Maybe (Int, Maybe Int, Maybe String)
 getVideo id1 = do
@@ -131,32 +127,32 @@ getVideo id1 = do
             return $ (,,)  
                   (update_id r) 
                   (join $ chatid r)
-                  (join (fmap  (fmap file_id) $ ((fmap video $ message r))))
-            where chatid resResult = ((chat_message_id <$>) <$>) . (fmap chat) $ message resResult
+                  (fmap file_id =<< (video <$> message r))
+            where chatid resResult = ((chat_message_id <$>) <$>) . fmap chat $ message resResult
 
 urlVideo :: (Int, Maybe Int, Maybe String) ->  IO BS.ByteString
-urlVideo (i,Just c,Just v) = responseMessage c i (parseRequest_ $ token ++  "sendVideo?chat_id=" ++ show c ++ "&video=" ++ v)
+urlVideo (i,Just c,Just v) = responseMessage c i (parseRequest_ $ prefix ++  "sendVideo?chat_id=" ++ show c ++ "&video=" ++ v)
 
 urlMessage :: Maybe (Int, Maybe Int, Maybe String) -> IO BS.ByteString
 urlMessage (Just (x,Just c,Just m)) 
                      | m == "/repeat" = repeatMessage c x 
-                     | m == "/help"   = responseMessage (-5) x (parseRequest_ (token ++ "sendMessage?chat_id=" ++ (show c) ++ "&text=" ++ textHelp)) 
-                     | otherwise      = responseMessage c x (parseRequest_ (token ++ "sendMessage?chat_id=" ++ (show c) ++ "&text="++ m )) 
+                     | m == "/help"   = responseMessage (-5) x (parseRequest_ (prefix ++ "sendMessage?chat_id=" ++ show c ++ "&text=" ++ textHelp)) 
+                     | otherwise      = responseMessage c x (parseRequest_ (prefix ++ "sendMessage?chat_id=" ++ show c ++ "&text="++ m )) 
 
 
-urlOther :: Maybe (Int, Int) -> IO (BS.ByteString)
-urlOther Nothing = return $ "Can not parse update_id"
+urlOther :: Maybe (Int, Int) -> IO BS.ByteString
+urlOther Nothing = return "Can not parse update_id"
 urlOther (Just (c,i)) = do 
-            response <- httpBS $ (parseRequest_ (token ++ "sendMessage?chat_id=" ++ (show c) ++ "&text=" ++ textNotFound)) 
+            response <- httpBS $ parseRequest_ $ prefix ++ "sendMessage?chat_id=" ++ show c ++ "&text=" ++ textNotFound
             responseDel <- httpBS $ parseRequest_ $ del i
             return $ BS.pack textNotFound 
-             where del x = token ++ "getUpdates?offset=" ++ show (x+1) 
+             where del x = prefix ++ "getUpdates?offset=" ++ show (x+1) 
 
-deleteUpdate :: Int -> IO (BS.ByteString)
+deleteUpdate :: Int -> IO BS.ByteString
 deleteUpdate x = do 
             response <- httpBS $ parseRequest_ $ del x
             return $ BS.pack $ show response 
-             where del x = token ++ "getUpdates?offset=" ++ show (x+1) 
+             where del x = prefix ++ "getUpdates?offset=" ++ show (x+1) 
 
 
 responseMessage :: Int -> Int ->  Request -> IO BS.ByteString
@@ -165,20 +161,19 @@ responseMessage cht iD req = do
             deleteUpdate iD
             return (getResponseBody res1)
           
-responseMessage2 :: IO (Int) -> Request -> IO (Response BS.ByteString)
+responseMessage2 :: IO Int -> Request -> IO (Response BS.ByteString)
 responseMessage2 rpts rqst = do
            res  <- rpts
            res2 <- httpBS rqst
-           return res2
-           if (res <= 1) then return res2 else responseMessage2 (return (res-1)) rqst
+           if res <= 1 then return res2 else responseMessage2 (return (res-1)) rqst
 
 repeatMessage :: Int -> Int -> IO BS.ByteString
 repeatMessage cht iD = do
-                request' <- parseRequest $ token
+                request' <- parseRequest prefix
                 rpts <- takeConfig cht
                 let request = request'
                         { method         = "POST"
-                        , requestBody    = RequestBodyBS $ BS.pack ("{\"method\":\"sendMessage\", \"chat_id\" : " ++ (show cht) ++ ",\"text\" : \"" ++ textRepeat rpts ++ "\", \"reply_markup\" : {\"inline_keyboard\" : [[{\"text\":\"1\", \"callback_data\":\"1\"},{\"text\":\"2\", \"callback_data\":\"2\"},{\"text\":\"3\", \"callback_data\":\"3\"},{\"text\":\"4\", \"callback_data\":\"4\"},{\"text\":\"5\", \"callback_data\":\"5\"}]]}")  
+                        , requestBody    = RequestBodyBS $ BS.pack ("{\"method\":\"sendMessage\", \"chat_id\" : " ++ show cht ++ ",\"text\" : \"" ++ textRepeat rpts ++ "\", \"reply_markup\" : {\"inline_keyboard\" : [[{\"text\":\"1\", \"callback_data\":\"1\"},{\"text\":\"2\", \"callback_data\":\"2\"},{\"text\":\"3\", \"callback_data\":\"3\"},{\"text\":\"4\", \"callback_data\":\"4\"},{\"text\":\"5\", \"callback_data\":\"5\"}]]}")  
                         , requestHeaders = [ ("Content-Type", "application/json; charset=utf-8")]
                         }   
                 response <- httpBS request
