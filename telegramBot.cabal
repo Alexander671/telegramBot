@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ca09dcd1fedc491ce4d191fac8bbb91c8ea99d4692e753fd2589271d7e67a15a
+-- hash: f7c59f39c06efeca04f79033a134e57b57de3be0cda5eb3987e4b1f107a4c2b1
 
 name:           telegramBot
 version:        0.1.0.0
@@ -48,6 +48,7 @@ library
 executable telegramBot-exe
   main-is: Main.hs
   other-modules:
+      Types
       Paths_telegramBot
   hs-source-dirs:
       app

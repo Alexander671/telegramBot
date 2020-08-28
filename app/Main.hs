@@ -2,6 +2,7 @@
 
 module Main where
 
+import Types
 import           Network.HTTP.Simple
 import           System.IO
 import           Network.HTTP.Client
@@ -13,10 +14,13 @@ import           Control.Monad
 import           GHC.Generics             hiding (from )
 import qualified Data.ByteString.Lazy     as B
 import qualified Data.ByteString.Char8    as BS
-import Lib
+import Control.Applicative 
 
 token :: String
-token = "https://api.telegram.org/bot"
+token = "https://api.telegram.org/bot1283054130:AAFMfS1-WADlOtvj77jOm9COzDc8D-JLJIE/"
+
+textNotFound :: String
+textNotFound = "This type of call is not supported"
 
 textRepeat :: Int -> String
 textRepeat cht = "Your amount of repeats is " ++ show cht ++ ". Choose amount of repeats"
@@ -24,6 +28,7 @@ textRepeat cht = "Your amount of repeats is " ++ show cht ++ ". Choose amount of
 textHelp :: String
 textHelp = "Hello, it's echo telegram bot."
 
+amountOfStartRepeat :: Int
 amountOfStartRepeat = 1
 
 fstTuple  (a,_,_) = a
@@ -31,104 +36,16 @@ sndTuple  (_,a,_) = a
 thirdTuple  (_,_,a) = a
 
 
-data TelegramKeyBoard = TelegramKeyBoard
-     { inline_keyboard :: [[String]]
-     
-     } deriving (Show,Generic)
-
-instance FromJSON TelegramKeyBoard where
-        parseJSON (Object v) = TelegramKeyBoard <$>
-                              v .: "inline_keyboard"
-        parseJSON _          = fail "not TelegramKeyBoard"
-instance ToJSON TelegramKeyBoard where
-
-
-data TelegramChat = TelegramChat
-    { chat_message_id :: Int
-    
-    } deriving (Show,Generic)
-
-instance FromJSON (TelegramChat) where
-        parseJSON (Object v) = TelegramChat <$>
-                                 v .: "id" 
-        parseJSON _          = fail "not TelegramFrom"
-instance ToJSON (TelegramChat) where
-
-
-data TelegramMessage= TelegramMessage
-    { message_id :: Int
-    , chat :: Maybe TelegramChat
-    , text :: Maybe String
-    , reply_markup :: Maybe TelegramKeyBoard
-    } deriving (Show,Generic)
-
-instance FromJSON (TelegramMessage) where
-        parseJSON (Object v) = TelegramMessage <$>
-                                 v .: "message_id" <*>
-                                 v .:? "chat" <*>
-                                 v .:? "text" <*>
-                                 v .:? "reply_markup"
-        parseJSON _          = fail "not TelegramMessage"
-instance ToJSON (TelegramMessage) where 
-
-data TelegramUser = TelegramUser
-  { from_id :: Int
-  } deriving (Show,Generic)
-
-instance FromJSON TelegramUser where
-        parseJSON (Object v) = TelegramUser <$>
-                             v .: "id"
-instance ToJSON TelegramUser where
-
-data TelegramCallBackQuery = TelegramCallBackQuery
-  { id_callback :: String
-  , from_callback :: TelegramUser
-  , data_callback :: String
-  } deriving (Show,Generic)
-
-instance FromJSON TelegramCallBackQuery where
-        parseJSON (Object v) = TelegramCallBackQuery <$>
-                             v .: "id" <*>
-                             v .: "from" <*>
-                             v .: "data" 
-instance ToJSON TelegramCallBackQuery where
-
-data TelegramResult = TelegramResult
-  { update_id :: Int
-  , message :: Maybe TelegramMessage
-  , callback_query :: Maybe TelegramCallBackQuery
-  } deriving (Show,Generic)
-
-instance FromJSON TelegramResult where
-        parseJSON (Object v) = TelegramResult <$>
-                                 v .: "update_id" <*>
-                                 v .:? "message" <*>
-                                 v .:? "callback_query"
-        parseJSON _          = fail "not TelegramFrom"
-instance ToJSON TelegramResult where
-
-
-data TelegramUpdate = TelegramUpdate
-  { ok :: Bool
-  , result :: Maybe [TelegramResult]
-  , description :: Maybe String
-  } deriving (Show,Generic)
-
-
-instance FromJSON (TelegramUpdate) where
-        parseJSON (Object v) = TelegramUpdate <$>
-                                 v .: "ok" <*>
-                                 v .:? "result" <*>
-                                 v .:? "decription" 
-        parseJSON _          = fail "not TelegramUp"
-instance ToJSON (TelegramUpdate) where
 
 
 main :: IO ()
 main = do
+    print ("Take Updates from telegram:")
     updates <- getUpdates
-    res <- sequenceA $ getCallBackOrMessage $ B.fromStrict updates 
-    print res
+    print updates
+    response <- getCallBackOrMessage $ B.fromStrict updates 
+    print ("Response:")
+    print response
     main
 
 getUpdates :: IO BS.ByteString
@@ -138,21 +55,35 @@ getUpdates  = do
             return $ getResponseBody res
 
 
-getCallBackOrMessage str = case (check str) of
-                           Nothing -> putMessage $ getMessage str
-                           Just x ->  [delCallBack str x]
-                        where check str = do 
+getCallBackOrMessage :: B.ByteString -> IO BS.ByteString
+getCallBackOrMessage str = case check str of
+                              Just x ->  delCallBack str x
+                              Nothing -> 
+                                    case getVideo str of
+                                          Just(x,Just y,Just z) -> urlVideo (x,Just y,Just z)
+                                          _ ->  case getMessage str of 
+                                                      Just (x, Just y, Just z) -> urlMessage $ Just (x, Just y, Just z)
+                                                      _ -> urlOther $ getIdToDel str
+                        where 
+                              check str = do 
                                         res       <- decode str  
                                         (r:resResult) <- result res
                                         cb <- callback_query r
                                         return cb
+                              getIdToDel :: B.ByteString -> Maybe (Int, Int)
+                              getIdToDel str = do
+                                        res           <- decode str  
+                                        (r:resResult) <- result res
+                                        mess <- message r
+                                        chat   <- chat mess
+                                        return  (chat_message_id chat, update_id r)
                
 
 delCallBack :: B.ByteString ->  TelegramCallBackQuery -> IO (BS.ByteString)
 delCallBack str x = do
                 musor <- changeConfig $ getCallBack x $ id1 str
                 updates <- getUpdates
-                req <- httpBS (parseRequest_ $ deleteUpdate $ fstTuple $ getCallBack x $ id1 str)
+                deleteUpdate $ fstTuple $ getCallBack x $ id1 str
                 return updates
               where id1 str =  do
                         res <- decode str
@@ -180,55 +111,65 @@ takeConfig iD = do
                 seq (length contents) (return ())
                 hClose handle
                 return $ head1 $ filter (\(x,y,z) -> z==iD) (read contents :: [(Int,Int,Int)])
-                               --filter (\(x,y,z) -> z==iD)
+
 head1 [] = amountOfStartRepeat
 head1 ((x,y,z):xs) = y 
 
-getMessage :: B.ByteString -> Maybe [(Int, Maybe (Maybe Int),Maybe (Maybe String))]
+getMessage :: B.ByteString -> Maybe (Int, Maybe Int,Maybe String)
 getMessage id1 = do
-            res         <- decode id1 :: Maybe TelegramUpdate   
-            resResult   <- result res
-            return $ zip3 (fmap update_id resResult) 
-                          (chatid resResult)
-                          $ fmap (text <$>) $ mess resResult           
-            where mess resResult = message <$> resResult
-                  chatid resResult = ((chat_message_id <$>) <$>) <$> (chat <$>) <$> mess resResult
+            res             <- decode id1 :: Maybe TelegramUpdate   
+            (r:resResult)   <- result res
+            return $ (,,) (update_id r) 
+                          (join $ chatid r)
+                          (fmap join (text <$>) $ message r)           
+            where chatid resResult = ((chat_message_id <$>) <$>) . (fmap chat) $ message resResult
+
+getVideo :: B.ByteString -> Maybe (Int, Maybe Int, Maybe String)
+getVideo id1 = do
+            res           <- decode id1 :: Maybe TelegramUpdate   
+            (r:resResult) <- result res
+            return $ (,,)  
+                  (update_id r) 
+                  (join $ chatid r)
+                  (join (fmap  (fmap file_id) $ ((fmap video $ message r))))
+            where chatid resResult = ((chat_message_id <$>) <$>) . (fmap chat) $ message resResult
+
+urlVideo :: (Int, Maybe Int, Maybe String) ->  IO BS.ByteString
+urlVideo (i,Just c,Just v) = responseMessage c i (parseRequest_ $ token ++  "sendVideo?chat_id=" ++ show c ++ "&video=" ++ v)
+
+urlMessage :: Maybe (Int, Maybe Int, Maybe String) -> IO BS.ByteString
+urlMessage (Just (x,Just c,Just m)) 
+                     | m == "/repeat" = repeatMessage c x 
+                     | m == "/help"   = responseMessage (-5) x (parseRequest_ (token ++ "sendMessage?chat_id=" ++ (show c) ++ "&text=" ++ textHelp)) 
+                     | otherwise      = responseMessage c x (parseRequest_ (token ++ "sendMessage?chat_id=" ++ (show c) ++ "&text="++ m )) 
 
 
-putMessage :: Maybe [(Int, Maybe (Maybe Int),Maybe (Maybe String))] -> [IO BS.ByteString]
-putMessage mess =  url urlUpdate_id urlMessage urlChatId
-                  where urlUpdate_id = (map fstTuple) <$> mess
-                        urlMessage   = (map thirdTuple) <$> mess
-                        urlChatId    = (map sndTuple) <$> mess
+urlOther :: Maybe (Int, Int) -> IO (BS.ByteString)
+urlOther Nothing = return $ "Can not parse update_id"
+urlOther (Just (c,i)) = do 
+            response <- httpBS $ (parseRequest_ (token ++ "sendMessage?chat_id=" ++ (show c) ++ "&text=" ++ textNotFound)) 
+            responseDel <- httpBS $ parseRequest_ $ del i
+            return $ BS.pack textNotFound 
+             where del x = token ++ "getUpdates?offset=" ++ show (x+1) 
 
+deleteUpdate :: Int -> IO (BS.ByteString)
+deleteUpdate x = do 
+            response <- httpBS $ parseRequest_ $ del x
+            return $ BS.pack $ show response 
+             where del x = token ++ "getUpdates?offset=" ++ show (x+1) 
 
-url :: Maybe [Int] -> Maybe [Maybe (Maybe [Char])] -> Maybe [Maybe (Maybe Int)] -> [IO BS.ByteString]
-url (Just []) _ _ = []
-url _ (Just (Nothing:xs)) _ = []
-url _ _ (Just [])  = []
-url _ _ Nothing = []
-url _ Nothing _ = []
-url Nothing _ _ = []    
-url (Just (x:xs)) (Just ((Just (Just m)):mc)) (Just ((Just (Just c)):chat)) 
-                     | m == "/help"   = responseMessage (-5) x (parseRequest_ (token ++ "sendMessage?chat_id=" ++ (show c) ++ "&text=" ++ textHelp)) : url (Just xs) (Just mc) (Just chat) 
-                     | m == "/repeat" = repeatMessage c x : url (Just xs) (Just mc) (Just chat)
-                     | otherwise      = responseMessage c x (parseRequest_ (token ++ "sendMessage?chat_id=" ++ (show c) ++ "&text="++ m )) : url (Just xs) (Just mc) (Just chat)
-
-
-deleteUpdate :: Int -> String
-deleteUpdate x = token ++ "getUpdates?offset=" ++ show (x+1) 
 
 responseMessage :: Int -> Int ->  Request -> IO BS.ByteString
 responseMessage cht iD req = do
-            res2 <- httpBS del 
             res1 <- responseMessage2 (takeConfig cht) req 
+            deleteUpdate iD
             return (getResponseBody res1)
-            where del = parseRequest_ $ deleteUpdate iD 
           
 responseMessage2 :: IO (Int) -> Request -> IO (Response BS.ByteString)
 responseMessage2 rpts rqst = do
            res  <- rpts
            res2 <- httpBS rqst
+           return res2
            if (res <= 1) then return res2 else responseMessage2 (return (res-1)) rqst
 
 repeatMessage :: Int -> Int -> IO BS.ByteString
@@ -241,7 +182,6 @@ repeatMessage cht iD = do
                         , requestHeaders = [ ("Content-Type", "application/json; charset=utf-8")]
                         }   
                 response <- httpBS request
-                musor <- httpBS del                
+                deleteUpdate iD              
                 return $ getResponseBody response
-                where del = parseRequest_ $ deleteUpdate iD
-                      manipulationWithList update contents = ((thirdTuple <$> head <$> getMessage update),(sndTuple <$> head <$> getMessage update)) : (read contents ::[(Maybe (Maybe (Maybe String)),Maybe (Maybe (Maybe Int)))])
+                
