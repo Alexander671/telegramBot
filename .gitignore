@@ -2,3 +2,5 @@
 *~
 # ingoring all logs
 *.log
+.vscode
+.history

@@ -1,22 +1,27 @@
 {-# LANGUAGE OverloadedStrings #-}
-
 module Main where
 
 import Types
-import           Network.HTTP.Simple
-import           System.IO
-import           Network.HTTP.Client
-import           Data.Aeson  
-import           Control.Monad
+import Network.HTTP.Simple (getResponseBody, httpBS, Request)
+import Network.HTTP.Client (parseRequest,parseRequest_,Request(method, requestBody, requestHeaders),Response,RequestBody(RequestBodyBS) )
+{------------------------------------}
+import Data.Aeson ( decode )  
+{------------------------------------}
+import System.IO ( hClose, openFile, hGetContents, IOMode(ReadWriteMode) )
 import           GHC.Generics             hiding (from )
+{------------------------------------}
+import Control.Monad ( join )
+{------------------------------------}
 import qualified Data.ByteString.Lazy     as B
 import qualified Data.ByteString.Char8    as BS
 
 
+{--------------------------------------------}
+{-customization-}
 timeoutGetUpdates :: Integer
 timeoutGetUpdates = 15
 
-token = "1283054130:AAGAxsDcZAGYom8UEnqGqCFqmZ4_FuJG3mU"
+token = "1283054130:AAG9Wy-CNmZ_7V_Fv4AUFUotGwOLFEprM1E"
 
 prefix :: String
 prefix = "https://api.telegram.org/bot" ++ token ++ "/"
@@ -32,13 +37,16 @@ textHelp = "Hello, it's echo telegram bot."
 
 amountOfStartRepeat :: Int
 amountOfStartRepeat = 1
+{--------------------------------------------}
+
 
 main :: IO ()
 main = do
     print "Take Updates from telegram:"
     updates <- getUpdates
     print updates
-    response <- getCallBackOrMessage $ B.fromStrict updates 
+    
+    response <- responseMessage $ url $ parseUpdate $ B.fromStrict updates 
     print "Response:"
     print response
     main
@@ -50,54 +58,67 @@ getUpdates  = do
             return $ getResponseBody res
 
 
-getCallBackOrMessage :: B.ByteString -> IO BS.ByteString
-getCallBackOrMessage str = case check str of
-                              Just x ->  delCallBack str x
-                              Nothing -> 
-                                    case getVideo str of
-                                          Just(x,Just y,Just z) -> urlVideo (x,Just y,Just z)
-                                          _ ->  case getMessage str of 
-                                                      Just (x, Just y, Just z) -> urlMessage $ Just (x, Just y, Just z)
-                                                      _ -> urlOther $ getIdToDel str
-                        where 
-                              check str = do 
-                                        res       <- decode str  
-                                        (r:resResult) <- result res
-                                        callback_query r
-                              getIdToDel :: B.ByteString -> Maybe (Int, Int)
-                              getIdToDel str = do
-                                        res           <- decode str  
-                                        (r:resResult) <- result res
-                                        mess <- message r
-                                        chat   <- chat mess
-                                        return  (chat_message_id chat, update_id r)
-               
+parseUpdate :: B.ByteString -> MESSAGE
+parseUpdate str =   
+            (CONTACT    contactFile )                        <|>
+            (TEXT       textMessage)                      <|>
+            (VIDEO    $ textFile video file_id_video)     <|>
+            (AUDIO    $ textFile audio file_id_audio)     <|>
+            (VOICE    $ textFile voice file_id_voice)     <|>
+            (DOCUMENT $ textFile document file_id_doc)    <|>
+            (CALLBACK $ callbackFile)                         <|>
+            (LOCATION $ locatFile)                        <|>
+            (STICKER  $ textFile sticker file_id_sticker) <|>
+            (OTHERMES $ other)                            <|>
+            (NOINPUT)
+                  where other = (getRes update_id,join $ getChat <$> (join $ getRes message))
+                        textMessage =
+                                    ((getRes update_id)
+                                    ,(join $ join $ fmap getChat <$> getRes message)
+                                    ,(join $ join $ fmap text <$> getRes message))
+                        locatFile = ((getRes update_id)
+                                    ,(join $ join $ fmap getChat <$> getRes message)
+                                    ,(fmap latitude    $ join $ join $ fmap location <$> getRes message)
+                                    ,(fmap longitude   $ join $ join $ fmap location <$> getRes message))
+                        textFile file id_file =
+                                    ((getRes update_id)
+                                    ,(join $ join $ fmap getChat <$> getRes message)
+                                    ,(fmap id_file $ join $ join $ fmap file <$> getRes message))
+                        callbackFile  =
+                                    ((getRes update_id)
+                                    ,(fmap from_id $ join $ fmap from_callback <$> getRes callback_query)
+                                    ,(fmap data_callback $ join $ getRes callback_query))
+                        contactFile =
+                              ((getRes update_id)
+                              ,(join $ join $ fmap getChat <$> getRes message)
+                              ,(fmap phone_number $ join $ join $ fmap contact <$> getRes message)
+                              ,(fmap first_name   $ join $ join $ fmap contact <$> getRes message)
+                              ,(join $ fmap user_id $ join $ join $ fmap contact <$> getRes message))
+                        getRes f = do
+                              res    <- decode str 
+                              (r:rs) <- result res
+                              return $ f r
+                        getChat res = do
+                              chat' <- chat res 
+                              return $ chat_message_id chat'                      
 
-delCallBack :: B.ByteString ->  TelegramCallBackQuery -> IO BS.ByteString
-delCallBack str x = do
-                musor <- changeConfig $ getCallBack x $ id1 str
+
+delCallBack :: (Int,Int, Int, String) -> IO BS.ByteString
+delCallBack x@(repeat,upd,cht,delUrl) = do
+                musor <- changeConfig x
                 updates <- getUpdates
-                deleteUpdate $ fstTuple $ getCallBack x $ id1 str
+                deleteUpdate delUrl 
                 return updates
-              where id1 str =  do
-                        res <- decode str
-                        (r:resResult) <- result res
-                        return $ update_id r
-                    fstTuple  (a,_,_) = a
-
-getCallBack :: TelegramCallBackQuery -> Maybe Int -> (Int,Int,Int)
-getCallBack str (Just x) = createField str
-                where createField cb = (,,) x (read (data_callback cb) :: Int) $ from_id $ from_callback cb
 
 -- (ID обновления, выбранное кол-во повторов, ID пользователя)
-changeConfig :: (Int,Int,Int) -> IO ()
-changeConfig cnfg = do
+changeConfig ::(Int,Int, Int, String)  -> IO ()
+changeConfig (upd,repeat,cht,delUrl) = do
                 handle <- openFile "configRepeat.log" ReadWriteMode
                 contents <- hGetContents handle 
                 seq (length contents) (return ())
-                writeFile "configRepeat.txt" $ show $ cnfg : (read contents :: [(Int,Int,Int)])
+                writeFile "configRepeat.log" $ show $ (upd,repeat,cht) : (read contents :: [(Int,Int,Int)])
                 hClose handle
-
+            
 
 takeConfig :: Int -> IO Int
 takeConfig iD = do
@@ -111,72 +132,57 @@ head1 :: [(a, Int, c)] -> Int
 head1 [] = amountOfStartRepeat
 head1 ((x,y,z):xs) = y 
 
-getMessage :: B.ByteString -> Maybe (Int, Maybe Int,Maybe String)
-getMessage id1 = do
-            res             <- decode id1 :: Maybe TelegramUpdate   
-            (r:resResult)   <- result res
-            return $ (,,) (update_id r) 
-                          (join $ chatid r)
-                          (fmap join (text <$>) $ message r)           
-            where chatid resResult = ((chat_message_id <$>) <$>) . fmap chat $ message resResult
+url :: MESSAGE -> MESSAGEorCALL
+url (TEXT (Just idUpdate,Just idFrom,Just m))
+                     | m == "/repeat" = REPEAT $ ("{\"method\":\"sendMessage\", \"chat_id\" : " ++ show idFrom ++ ",\"text\" : \"", "\", \"reply_markup\" : {\"inline_keyboard\" : [[{\"text\":\"1\", \"callback_data\":\"1\"},{\"text\":\"2\", \"callback_data\":\"2\"},{\"text\":\"3\", \"callback_data\":\"3\"},{\"text\":\"4\", \"callback_data\":\"4\"},{\"text\":\"5\", \"callback_data\":\"5\"}]]}",delUrl idUpdate,idFrom)
+                     | m == "/help"   = MESSAGE (prefix ++ "sendMessage?chat_id=" ++ show idFrom ++ "&text=" ++ textHelp,delUrl idUpdate,idFrom)
+                     | otherwise      = MESSAGE (prefix ++ "sendMessage?chat_id=" ++ show idFrom ++ "&text=" ++ m,delUrl idUpdate,idFrom)
+url (CONTACT (Just idUpdate,Just idFrom, Just phone, Just firstName,Just user)) =MESSAGE (prefix ++ "sendContact?chat_id=" ++ show idFrom ++ "&phone_number=" ++ phone ++ "&first_name=" ++ firstName,delUrl idUpdate,idFrom)
+url (VIDEO   (Just idUpdate,Just idFrom, Just dataFile)) = MESSAGE (prefix ++ "sendVideo?chat_id=" ++ show idFrom ++ "&video=" ++ dataFile,delUrl idUpdate,idFrom)
+url (AUDIO   (Just idUpdate,Just idFrom, Just dataFile)) = MESSAGE (prefix ++ "sendAudio?chat_id=" ++ show idFrom ++ "&audio=" ++ dataFile,delUrl idUpdate,idFrom)
+url (STICKER (Just idUpdate,Just idFrom, Just dataFile)) = MESSAGE (prefix ++ "sendSticker?chat_id=" ++ show idFrom ++ "&sticker="    ++ dataFile,delUrl idUpdate,idFrom)
+url (DOCUMENT(Just idUpdate,Just idFrom, Just dataFile)) = MESSAGE (prefix ++ "sendDocument?chat_id=" ++ show idFrom ++ "&document=" ++ dataFile,delUrl idUpdate,idFrom)
+url (VOICE   (Just idUpdate,Just idFrom, Just dataFile)) = MESSAGE (prefix ++ "sendVoice?chat_id=" ++ show idFrom ++ "&voice="    ++ dataFile,delUrl idUpdate,idFrom)     
+url (CALLBACK(Just idUpdate,Just idFrom, Just dataFile)) = CALL    (idUpdate,read dataFile::Int,idFrom,delUrl idUpdate)
+url (OTHERMES(Just idUpdate,Just idFrom))                = MESSAGE (prefix ++ "sendMessage?chat_id=" ++ show idFrom ++ "&text="   ++ textNotFound,delUrl idUpdate,idFrom)
+url (LOCATION(Just idUpdate,Just idFrom,Just lat,Just long)) = MESSAGE (prefix ++ "sendLocation?chat_id=" ++ show idFrom ++ "&latitude=" ++ show lat ++ "&longitude=" ++show long,delUrl idUpdate,idFrom)
+url (NOINPUT)                                            = MESSAGE ("NOINPUT","",0)
 
-getVideo :: B.ByteString -> Maybe (Int, Maybe Int, Maybe String)
-getVideo id1 = do
-            res           <- decode id1 :: Maybe TelegramUpdate   
-            (r:resResult) <- result res
-            return $ (,,)  
-                  (update_id r) 
-                  (join $ chatid r)
-                  (fmap file_id =<< (video <$> message r))
-            where chatid resResult = ((chat_message_id <$>) <$>) . fmap chat $ message resResult
+delUrl :: (Show a, Num a) => a -> [Char]
+delUrl idUpdate = prefix ++ "getUpdates?offset=" ++ (show $ idUpdate + 1)
 
-urlVideo :: (Int, Maybe Int, Maybe String) ->  IO BS.ByteString
-urlVideo (i,Just c,Just v) = responseMessage c i (parseRequest_ $ prefix ++  "sendVideo?chat_id=" ++ show c ++ "&video=" ++ v)
-
-urlMessage :: Maybe (Int, Maybe Int, Maybe String) -> IO BS.ByteString
-urlMessage (Just (x,Just c,Just m)) 
-                     | m == "/repeat" = repeatMessage c x 
-                     | m == "/help"   = responseMessage (-5) x (parseRequest_ (prefix ++ "sendMessage?chat_id=" ++ show c ++ "&text=" ++ textHelp)) 
-                     | otherwise      = responseMessage c x (parseRequest_ (prefix ++ "sendMessage?chat_id=" ++ show c ++ "&text="++ m )) 
-
-
-urlOther :: Maybe (Int, Int) -> IO BS.ByteString
-urlOther Nothing = return "Can not parse update_id"
-urlOther (Just (c,i)) = do 
-            response <- httpBS $ parseRequest_ $ prefix ++ "sendMessage?chat_id=" ++ show c ++ "&text=" ++ textNotFound
-            responseDel <- httpBS $ parseRequest_ $ del i
-            return $ BS.pack textNotFound 
-             where del x = prefix ++ "getUpdates?offset=" ++ show (x+1) 
-
-deleteUpdate :: Int -> IO BS.ByteString
-deleteUpdate x = do 
-            response <- httpBS $ parseRequest_ $ del x
-            return $ BS.pack $ show response 
-             where del x = prefix ++ "getUpdates?offset=" ++ show (x+1) 
-
-
-responseMessage :: Int -> Int ->  Request -> IO BS.ByteString
-responseMessage cht iD req = do
+responseMessage :: MESSAGEorCALL -> IO BS.ByteString
+responseMessage (MESSAGE ("NOINPUT",_,_))=return "no update"
+responseMessage (MESSAGE (req,del,cht))  = do
             res1 <- responseMessage2 (takeConfig cht) req 
-            deleteUpdate iD
+            del' <- parseRequest del 
+            httpBS del'
             return (getResponseBody res1)
-          
-responseMessage2 :: IO Int -> Request -> IO (Response BS.ByteString)
+responseMessage (CALL x) = delCallBack x
+responseMessage (REPEAT x) = repeatMessage x
+
+responseMessage2 :: IO Int -> String -> IO (Response BS.ByteString)
 responseMessage2 rpts rqst = do
-           res  <- rpts
-           res2 <- httpBS rqst
+           res   <- rpts
+           rqst' <- parseRequest rqst 
+           res2  <- httpBS rqst'
            if res <= 1 then return res2 else responseMessage2 (return (res-1)) rqst
 
-repeatMessage :: Int -> Int -> IO BS.ByteString
-repeatMessage cht iD = do
+deleteUpdate :: String -> IO BS.ByteString
+deleteUpdate del = do
+      del' <-parseRequest del 
+      response <- httpBS del'
+      return $ getResponseBody response
+
+repeatMessage :: (String,String,String,Int) -> IO BS.ByteString
+repeatMessage (part1,part2,del,cht) = do
                 request' <- parseRequest prefix
                 rpts <- takeConfig cht
                 let request = request'
                         { method         = "POST"
-                        , requestBody    = RequestBodyBS $ BS.pack ("{\"method\":\"sendMessage\", \"chat_id\" : " ++ show cht ++ ",\"text\" : \"" ++ textRepeat rpts ++ "\", \"reply_markup\" : {\"inline_keyboard\" : [[{\"text\":\"1\", \"callback_data\":\"1\"},{\"text\":\"2\", \"callback_data\":\"2\"},{\"text\":\"3\", \"callback_data\":\"3\"},{\"text\":\"4\", \"callback_data\":\"4\"},{\"text\":\"5\", \"callback_data\":\"5\"}]]}")  
+                        , requestBody    = RequestBodyBS $ BS.pack (part1 ++ textRepeat rpts ++part2)  
                         , requestHeaders = [ ("Content-Type", "application/json; charset=utf-8")]
                         }   
                 response <- httpBS request
-                deleteUpdate iD              
+                deleteUpdate del              
                 return $ getResponseBody response
-                
