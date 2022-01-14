@@ -1,5 +1,5 @@
 # Echo Telegram Bot
-It's echo telegram bot with basic functionality. It support messages for text and video
+It's echo telegram bot with basic functionality. it returns back any message. It support messages for text, video, contacts, documents, audio, voice, etc.
 ## Installation
 Use the **stack** to install bot.
 
